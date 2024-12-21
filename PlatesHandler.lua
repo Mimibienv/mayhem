@@ -36,7 +36,7 @@ local function GeneratePlates()
 	
 	local NumberOfPlates = RNGv2(1, Grid^2, #CurrentPlayers)	
 	for Index, PlateId in NumberOfPlates do
-		print(PlateId)
+		print("PlateId:",PlateId)
 		local CurrentPlayer = CurrentPlayers[Index] or nil
 		if CurrentPlayer==nil
 			or CurrentPlayer.Character==nil
@@ -121,13 +121,13 @@ PlatesHandler.GetPlateFromOwnerId = function(x)
 	end
 end
 PlatesHandler.GetPlateFromIndex = function(x)
-	if type(x)=="number" and table.find(Plates,x) then
+	if type(x)=="number" and Plates[x] then
 		return Plates[x]
 	elseif type(x)=="table" then
 		local PlatesResult = {}
 		for i, v in x do
-			if typeof(v)=="number" and table.find(Plates,x) then
-				table.insert(PlatesResult,GetPlateFromOwnerId(v))
+			if typeof(v)=="number" and Plates[v] then
+				table.insert(PlatesResult,Plates[v])
 			end
 		end
 		return PlatesResult
