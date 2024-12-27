@@ -1,5 +1,6 @@
 --// Variables
 local Players = game:GetService("Players")
+local TweenService = game:GetService("TweenService")
 
 local Plates = {}
 local PlatesHandler = {}
@@ -11,6 +12,12 @@ local Settings = {
 	DefaultPlateSize = 16;
 	Grid = 7;
 	--NumberOfPlates = 49;
+}
+
+export type PlateObject = {
+	Plate:Part,
+	PlateId:number,
+	OwnerId:number
 }
 
 
@@ -36,7 +43,7 @@ local function GeneratePlates()
 	
 	local NumberOfPlates = RNGv2(1, Grid^2, #CurrentPlayers)	
 	for Index, PlateId in NumberOfPlates do
-		print("PlateId:",PlateId)
+		print("Generated PlateId:",PlateId)
 		local CurrentPlayer = CurrentPlayers[Index] or nil
 		if CurrentPlayer==nil
 			or CurrentPlayer.Character==nil
@@ -73,19 +80,65 @@ local function GeneratePlates()
 	return true -- success
 end
 
-local function GetPlateFromOwnerId(OwnerId:string)
+local function GetPlateFromOwnerId(OwnerId:number)
 	for i, v in Plates do
 		if v["OwnerId"] == OwnerId then
 			return v
 		end
 	end
 end
-local function GetPlateFromPlateId(OwnerId:string)
-	for i, v in Plates do
-		if v["PlateId"] == OwnerId then
-			return v
+
+local function HighlightPlate(Plate, Duration)
+	if Plate and Plate.Plate and Plate.Plate:isA("BasePart") then
+		local SelectionBox = Instance.new("SelectionBox")
+		SelectionBox.Name = "HighlightSelectionBox"
+		SelectionBox.Color3 = Color3.fromRGB(200)
+		SelectionBox.LineThickness = .1
+		SelectionBox.SurfaceColor3 = Color3.fromRGB(255)
+		SelectionBox.SurfaceTransparency = .75
+		SelectionBox.Transparency=0
+		SelectionBox.Parent = Plate.Plate
+		SelectionBox.Adornee = Plate.Plate
+		---------------------------------
+		if tonumber(Duration) then
+			task.delay(Duration, function()
+				if SelectionBox then SelectionBox:Destroy() end
+			end)
 		end
 	end
+end
+
+local function ClearHighlight(Plate)
+	if Plate and Plate.Plate and Plate.Plate:isA("BasePart") then
+		for i, v in Plate.Plate:GetChildren() do
+			if v.Name == "HighlightSelectionBox" then
+				v:Destroy()
+			end
+		end
+	end
+end
+
+local function RemovePlate(Plate:BasePart, i)
+	local PlateInstance = Plate.Plate
+	table.remove(Plates,i)
+	
+	HighlightPlate(Plate)	
+	task.delay(.5, function()
+		local TInfo = TweenInfo.new(3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+		
+		local Tween1 = TweenService:Create(PlateInstance, TInfo, {Transparency = 1})
+		Tween1:Play()
+		for i, v:SelectionBox in pairs(PlateInstance:GetChildren()) do
+			if v.Name=="HighlightSelectionBox" and v:IsA("SelectionBox") then
+				local Tween2 = TweenService:Create(v, TInfo, {SurfaceTransparency = 1, Transparency = 1})
+				Tween2:Play()
+			end
+		end
+		task.wait(3)
+		PlateInstance.CanCollide = false
+		task.wait(1)
+		PlateInstance:Destroy()
+	end)
 end
 
 --// Module connections
@@ -134,37 +187,32 @@ PlatesHandler.GetPlateFromIndex = function(x)
 	end
 end
 PlatesHandler.GetPlateFromPlateId = function(x)
-	if type(x)=="number" and Players:GetPlayerByUserId(x) then
-		return GetPlateFromPlateId(x)
+	if type(x)=="number" and Plates[x] then
+		return Plates[x]
 	elseif type(x)=="table" then
 		local PlatesResult = {}
 		for i, v in x do
-			if typeof(v)=="number" and Players:GetPlayerByUserId(v) then
-				table.insert(PlatesResult,GetPlateFromPlateId(v))
+			if typeof(v)=="number" and Plates[x] then
+				table.insert(PlatesResult,Plates[x])
 			end
 		end
 		return PlatesResult
 	end
 end
 
-
-PlatesHandler.ModifyPlate = function(PlateId,Function)
-	
-end
-
-PlatesHandler.RemovePlate = function(PlateId)
-	if type(PlateId)=="number" then
-		local Plate = GetPlateFromPlateId(PlateId)
-		if Plate then
-			Plate.Plate:Destroy()
-			table.remove(Plates,Plate)
+PlatesHandler.RemovePlateFromOwnerId = function(OwnerId)
+	if type(OwnerId)=="number" then
+		for i, v in Plates do
+			if v.OwnerId==OwnerId then
+				RemovePlate(v, i)
+			end
 		end
-	elseif type(PlateId)=="table" then
-		for i, v in PlateId do
-			local Plate = GetPlateFromPlateId(v)
-			if Plate then
-				Plate.Plate:Destroy()
-				table.remove(Plates,Plate)
+	elseif type(OwnerId)=="table" then
+		for i, v in OwnerId do
+			for m, p in Plates do
+				if p.OwnerId==OwnerId then
+					RemovePlate(p, m)
+				end
 			end
 		end
 	end
@@ -175,8 +223,13 @@ PlatesHandler.ClearPlates = function()
 		if v.Plate~=nil then v.Plate:Destroy() end
 	end
 	Plates = {}
+	
+	Settings.PlatesDir:ClearAllChildren()
 end
 
+PlatesHandler.HighlightPlate = HighlightPlate
+PlatesHandler.ClearHighlight = ClearHighlight
+
 --// Return
-export type PlateObject = {Plate:Part, PlateId:number, OwnerId:number}
+
 return PlatesHandler
