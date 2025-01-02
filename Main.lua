@@ -7,19 +7,18 @@ local ServerScriptService = game:GetService("ServerScriptService")
 local PlatesHandler = require(ServerScriptService:WaitForChild("PlatesHandler"))
 local PlatesEvents = require(ServerScriptService:WaitForChild("PlatesEvents"))
 local InfobarManager = require(ServerScriptService:WaitForChild("InfobarManager"))
+local PlayersHandler = require(ServerScriptService:WaitForChild("PlayersHandler"))
 
 local RequiredPlayersNumber = 1
 local CurrentNumberOfPlayers = 0
 local CurrentPlayers = {}
 local CurrentNumberOfPlayersInGame = 0
 local CurrentPlayersInGame = {}
-local PlayersWinCount = 1
+local PlayersWinCount = 0
 
 local MatchInProgess = false
 local EventInProgress = false
 local TotalEventsPlayed = 0
-
-local sanity = nil -- TODO: therapy
 
 local Events = PlatesEvents.Events
 local EveryEventsName = PlatesEvents.Variables.EveryEventsName
@@ -62,7 +61,7 @@ local function InitPlayerCounts()
 		then table.remove(CurrentPlayers, i)
 		end
 	end
-	-- /Dead players filtering
+	
 	CurrentNumberOfPlayers = #CurrentPlayers
 	if CurrentNumberOfPlayers >= RequiredPlayersNumber then
 		CurrentPlayersInGame = CurrentPlayers
@@ -135,6 +134,16 @@ while not MatchInProgess and task.wait(1) do
 			end
 		end
 	end
+	local PlrRemovingThread = game.Players.PlayerRemoving:Connect(function(PlayerRemoved)
+		local UID = PlayerRemoved.UserId
+		for i, v:Player in CurrentPlayersInGame do
+			if v.UserId == UID then
+				table.remove(CurrentPlayersInGame,i)
+				CurrentNumberOfPlayersInGame-=1
+			end
+		end
+		PlatesHandler.RemovePlateFromOwnerId(UID)
+	end)
 	
 	if PlayerThreshold then
 		local Reponse = PlatesHandler.GeneratePlates()
@@ -155,14 +164,14 @@ while not MatchInProgess and task.wait(1) do
 			local Data = RngEvent.Data
 			--print("RngEvent Picked:", RngEvent)
 			
-			if Data.playerEvent then
+			if Data.eventType == "Plate" or Data.eventType=="Player" then
 				EventInProgress = true
 				
 				--Algorithm Start--
 				local min, max
 				if Data.min then
 					if Data.min<1 then
-						min = math.round(CurrentNumberOfPlayers*Data.min)
+						min = math.round(CurrentNumberOfPlayersInGame*Data.min)
 					else
 						min = Data.min
 					end
@@ -172,62 +181,95 @@ while not MatchInProgess and task.wait(1) do
 				end
 				if Data.max then
 					if Data.max<1 then
-						max = (Data.max>=Data.min) and math.round(CurrentNumberOfPlayers*Data.max) or min
+						max = (Data.max>=Data.min) and math.round(CurrentNumberOfPlayersInGame*Data.max) or min
 					else
 						max = (Data.max>=Data.min) and Data.max or min
 					end
-					if max>CurrentNumberOfPlayers then max=CurrentNumberOfPlayers end
+					if max>CurrentNumberOfPlayersInGame then max=CurrentNumberOfPlayersInGame end
 				else
-					max=CurrentNumberOfPlayers
+					max=CurrentNumberOfPlayersInGame
 				end
 				print("min, max =", min, max)
 				
-				local ChosenPlayers = RNGv2(1, CurrentNumberOfPlayers, math.random(min, max))
+				local ChosenPlayers = RNGv2(1, CurrentNumberOfPlayersInGame, math.random(min, max))
 				print("Chosen Players for event:", ChosenPlayers)
 				--Algorithm End--
 				
-				local AffectedPlates = {}
+				local Affected = {}
 				for i, v in ChosenPlayers do
-					local PlayerPlate = PlatesHandler.GetPlateFromIndex(v)  --GetPlateFromOwnerId(CurrentPlayers[v].UserId)
-					if PlayerPlate~=nil then
-						table.insert(AffectedPlates, PlayerPlate)
+					if Data.eventType == "Plate" then
+						local PlayerPlate = PlatesHandler.GetPlateFromIndex(v)  --GetPlateFromOwnerId(CurrentPlayers[v].UserId)
+						if PlayerPlate~=nil then
+							table.insert(Affected, PlayerPlate)
+						end
+					elseif Data.eventType=="Player" then
+						local Player = CurrentPlayersInGame[v]
+						if Player~=nil then
+							table.insert(Affected, Player)
+						end
 					end
 				end
-				print("Affected plates:", AffectedPlates)
+				print("Affected:", Affected)
 				-- Bar info
 				
-				NumberOfAffectedPlates = #AffectedPlates
-				InfobarManager.BarText(1, CurrentPlayersInGame, string.format(Data.description, NumberOfAffectedPlates, NumberOfAffectedPlates>1 and "s" or ""))
+				AffectedNumber = #Affected
+				InfobarManager.BarText(1, CurrentPlayersInGame, string.format(Data.description, AffectedNumber, AffectedNumber>1 and "s" or ""))
 				
-				InfobarManager.BarText(2, CurrentPlayersInGame, "Affected plates:")
+				InfobarManager.BarText(2, CurrentPlayersInGame, string.format("Affected %s:", string.lower(Data.eventType)..(AffectedNumber>1 and "s" or "")))
 				task.wait(1)
-				for i, v in AffectedPlates do
-					InfobarManager.BarText(2, CurrentPlayersInGame, " "..tostring(Players:GetPlayerByUserId(v.OwnerId).Name), true)
-					PlatesHandler.HighlightPlate(v)
+				local LoopedNumber = 0
+				for i, v in Affected do
+					if typeof(v)=="Instance" and Data.eventType=="Player" then
+						InfobarManager.BarText(2, CurrentPlayersInGame, (LoopedNumber>=1 and ", " or " ")..tostring(v.Name), true)
+						if Data.visualize then PlayersHandler.HighlightPlayer(v) end
+					else
+						InfobarManager.BarText(2, CurrentPlayersInGame, (LoopedNumber>=1 and ", " or " ")..tostring(Players:GetPlayerByUserId(v.OwnerId).Name), true)
+						if Data.visualize then PlatesHandler.HighlightPlate(v) end
+					end
+					
+					LoopedNumber += 1
 					task.wait(.5)
 				end
 				task.wait(1)
 				
-				for i, v in AffectedPlates do
-					PlatesHandler.ClearHighlight(v)
-					RngEvent.Event(v)
+				InfobarManager.BarClear(1, CurrentPlayersInGame)
+				InfobarManager.BarClear(2, CurrentPlayersInGame)
+				for i, v in Affected do
+					(typeof(v)=="Instance" and Data.eventType=="Player" and PlayersHandler or PlatesHandler).ClearHighlight(v)
+					local s, e = pcall(function()
+						RngEvent.Event(v)
+					end)
+					if not s then warn("EVENT ERROR:", e) end
 				end
 				
-				task.wait(Data.cooldown or 2)
-				EventInProgress=false
+			else -- (if global event)
 				
-				TotalEventsPlayed+=1
-				if MatchWon() then
-					HandleWin()
-					break
-				end
+				InfobarManager.BarText(1, CurrentPlayersInGame, Data.description)
+				task.wait(2)
+				InfobarManager.BarClear(1, CurrentPlayersInGame)
+				local s, e = pcall(function()
+					RngEvent.Event()
+				end)
+				if not s then warn("EVENT ERROR:", e) end
 				
-				
-				print("\n------------------------\n")
 			end
-		end
+			
+			task.wait(Data.cooldown or 2)
+			EventInProgress=false
+			
+			TotalEventsPlayed+=1
+			if MatchWon() then
+				HandleWin()
+				break
+			end
+			
+			
+			print("\n------------------------\n")
+			
+		end -- while loop --> next event
 		-- Match end
 		
+		PlrRemovingThread:Disconnect() -- Free Server RAM and CPU usage
 		print("\n========================\n")
 	end
 	
