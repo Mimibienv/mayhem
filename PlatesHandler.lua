@@ -11,6 +11,7 @@ local Settings = {
 	Space = 10;
 	DefaultPlateSize = 16;
 	Grid = 7;
+	Surface = Enum.SurfaceType.Smooth;
 	--NumberOfPlates = 49;
 }
 
@@ -69,7 +70,10 @@ local function GeneratePlates()
 		PlateInstance.Size=Vector3.new(DefaultPlateSize,1,DefaultPlateSize)
 		PlateInstance.Parent=PlatesDir
 		PlateInstance.Position=Origin + Vector3.new(x,0,y)
-		
+		PlateInstance.TopSurface, PlateInstance.FrontSurface, PlateInstance.RightSurface, PlateInstance.BackSurface, PlateInstance.LeftSurface, PlateInstance.BottomSurface
+		= Settings.Surface,       Settings.Surface,           Settings.Surface,           Settings.Surface,          Settings.Surface           , Settings.Surface
+		-- PlateInstance:SetAttribute("PlateId", PlateId) -- PlateInstance.Name already exists
+		PlateInstance:SetAttribute("OwnerId", CurrentPlayer.UserId)
 		Plates[Index]={
 			["Plate"] = PlateInstance;
 			["PlateId"] = PlateId;
@@ -88,13 +92,13 @@ local function GetPlateFromOwnerId(OwnerId:number)
 	end
 end
 
-local function HighlightPlate(Plate, Duration)
+local function HighlightPlate(Plate, Duration:number?, Red:true?|nil)
 	if Plate and Plate.Plate and Plate.Plate:isA("BasePart") then
 		local SelectionBox = Instance.new("SelectionBox")
 		SelectionBox.Name = "HighlightSelectionBox"
-		SelectionBox.Color3 = Color3.fromRGB(200)
+		SelectionBox.Color3 = Red and Color3.fromRGB(200) or Color3.fromRGB(0,140,250)
 		SelectionBox.LineThickness = .1
-		SelectionBox.SurfaceColor3 = Color3.fromRGB(255)
+		SelectionBox.SurfaceColor3 = Red and Color3.fromRGB(255) or Color3.fromRGB(0,188,255)
 		SelectionBox.SurfaceTransparency = .75
 		SelectionBox.Transparency=0
 		SelectionBox.Parent = Plate.Plate
@@ -109,7 +113,7 @@ local function HighlightPlate(Plate, Duration)
 end
 
 local function ClearHighlight(Plate)
-	if Plate and Plate.Plate and Plate.Plate:isA("BasePart") then
+	if Plate and type(Plate)=="table" and Plate.Plate and Plate.Plate:isA("BasePart") then
 		for i, v in Plate.Plate:GetChildren() do
 			if v.Name == "HighlightSelectionBox" then
 				v:Destroy()
@@ -122,7 +126,7 @@ local function RemovePlate(Plate:BasePart, i)
 	local PlateInstance = Plate.Plate
 	table.remove(Plates,i)
 	
-	HighlightPlate(Plate)	
+	HighlightPlate(Plate,nil,true)	
 	task.delay(.5, function()
 		local TInfo = TweenInfo.new(3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 		
